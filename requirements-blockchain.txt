@@ -1,0 +1,28 @@
+# Hyperledger Fabric Blockchain Dependencies
+# Install these for production blockchain integration
+
+# Core Hyperledger Fabric Python SDK
+fabric-sdk-py==1.0.0
+
+# Alternative/newer Fabric SDK (if needed)
+# hfc>=1.0.0
+
+# Cryptographic dependencies
+cryptography>=41.0.0
+pycryptodome>=3.19.0
+
+# gRPC and Protocol Buffers for Fabric communication
+grpcio>=1.59.0
+grpcio-tools>=1.59.0
+protobuf>=4.24.0
+
+# Additional blockchain utilities
+web3>=6.11.0  # For Ethereum integration if needed
+py-ecc>=6.0.0  # Elliptic curve cryptography
+
+# Development and testing
+pytest-asyncio>=0.21.0  # For async tests
+pytest-mock>=3.12.0     # For mocking blockchain components
+
+# Monitoring and logging
+structlog>=23.1.0  # Structured logging for blockchain events

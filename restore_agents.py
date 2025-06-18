@@ -1,0 +1,1418 @@
+"""
+Restore properly fixed versions of pricing_agent.py and fraud_detection_agent.py
+"""
+
+# Path to the agent files
+pricing_agent_path = "src/agents/pricing_agent.py"
+fraud_detection_agent_path = "src/agents/fraud_detection_agent.py"
+
+# Properly fixed content for pricing_agent.py
+pricing_agent_content = """\"\"\"
+Pricing Agent for MatchedCover Insurance Platform.
+
+This agent calculates dynamic insurance premiums using market data,
+risk assessments, and machine learning models for competitive pricing.
+\"\"\"
+
+import json
+import logging
+from typing import Dict, Any, List, Tuple
+from datetime import datetime, timedelta
+from dataclasses import dataclass
+from enum import Enum
+from decimal import Decimal
+
+import numpy as np
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.linear_model import LinearRegression
+
+
+from src.agents.base_agent import BaseAgent
+from src.agents.risk_assessor import RiskAssessment, RiskLevel
+from src.quantum.crypto import QuantumResistantSigner
+
+logger = logging.getLogger(__name__)
+
+
+class PricingStrategy(Enum):
+    \"\"\"Pricing strategy options.\"\"\"
+
+    COMPETITIVE = "competitive"
+    PENETRATION = "penetration"
+    PREMIUM = "premium"
+    RISK_BASED = "risk_based"
+    MARKET_FOLLOWING = "market_following"
+
+
+class PricingFactorType(Enum):
+    \"\"\"Types of pricing factors.\"\"\"
+
+    BASE_RATE = "base_rate"
+    RISK_ADJUSTMENT = "risk_adjustment"
+    MARKET_COMPETITIVE = "market_competitive"
+    VOLUME_DISCOUNT = "volume_discount"
+    LOYALTY_DISCOUNT = "loyalty_discount"
+    REGULATORY_SURCHARGE = "regulatory_surcharge"
+    PROFIT_MARGIN = "profit_margin"
+
+
+@dataclass
+class PricingFactor:
+    \"\"\"Individual pricing factor.\"\"\"
+
+    factor_type: PricingFactorType
+    value: Decimal
+    weight: float
+    description: str
+    source: str
+
+
+@dataclass
+class PricingQuote:
+    \"\"\"Insurance pricing quote.\"\"\"
+
+    quote_id: str
+    customer_id: str
+    policy_type: str
+    coverage_amount: Decimal
+    base_premium: Decimal
+    final_premium: Decimal
+    pricing_factors: List[PricingFactor]
+    discount_total: Decimal
+    surcharge_total: Decimal
+    risk_multiplier: float
+    market_competitiveness: float
+    quote_timestamp: datetime
+    valid_until: datetime
+    confidence_score: float
+    quantum_signature: str
+
+
+@dataclass
+class MarketData:
+    \"\"\"Market pricing data.\"\"\"
+
+    competitor_prices: List[Decimal]
+    market_average: Decimal
+    market_percentile_25: Decimal
+    market_percentile_75: Decimal
+    volume_trends: Dict[str, float]
+    seasonal_factors: Dict[str, float]
+
+
+class PricingAgent(BaseAgent):
+    \"\"\"
+    AI agent for dynamic insurance pricing and quote generation.
+
+    Uses machine learning models, market data, and risk assessments
+    to calculate competitive and profitable insurance premiums.
+    \"\"\"
+
+    def __init__(self):
+        super().__init__()
+        self.name = "PricingAgent"
+        self.agent_type = "pricing"
+        self.quantum_signer = QuantumResistantSigner()
+        self.pricing_models = {}
+        self.market_data_cache = {}
+        self._initialize_pricing_models()
+
+    def _initialize_pricing_models(self):
+        \"\"\"Initialize machine learning models for pricing.\"\"\"
+        try:
+            # Base pricing model
+            self.pricing_models["base_pricing"] = RandomForestRegressor(
+                n_estimators=150, max_depth=12, random_state=42
+            )
+
+            # Market competitive pricing model
+            self.pricing_models["competitive_pricing"] = LinearRegression()
+
+            # Risk-based pricing model
+            self.pricing_models["risk_pricing"] = RandomForestRegressor(
+                n_estimators=100, max_depth=8, random_state=42
+            )
+
+            # Load base rates for different policy types
+            self.base_rates = {
+                "auto": Decimal("1200.00"),
+                "home": Decimal("800.00"),
+                "health": Decimal("3600.00"),
+                "life": Decimal("2400.00"),
+                "business": Decimal("5000.00"),
+                "travel": Decimal("150.00"),
+            }
+
+            logger.info("Pricing models initialized successfully")
+
+        except Exception as e:
+            logger.error(f"Failed to initialize pricing models: {str(e)}")
+            raise
+
+    async def calculate_quote(
+        self,
+        customer_data: Dict[str, Any],
+        policy_type: str,
+        coverage_amount: Decimal,
+        risk_assessment: RiskAssessment,
+        pricing_strategy: PricingStrategy = PricingStrategy.COMPETITIVE,
+    ) -> PricingQuote:
+        \"\"\"
+        Calculate insurance quote with dynamic pricing.
+
+        Args:
+            customer_data: Customer information
+            policy_type: Type of insurance policy
+            coverage_amount: Requested coverage amount
+            risk_assessment: Risk assessment from RiskAssessorAgent
+            pricing_strategy: Pricing strategy to use
+
+        Returns:
+            Complete pricing quote with breakdown
+        \"\"\"
+        try:
+            logger.info(
+                f"Calculating quote for {policy_type} policy, coverage: {coverage_amount}"
+            )
+
+            # Get market data
+            market_data = await self._get_market_data(
+                policy_type, coverage_amount
+            )
+
+            # Calculate base premium
+            base_premium = await self._calculate_base_premium(
+                policy_type, coverage_amount, customer_data
+            )
+
+            # Calculate pricing factors
+            pricing_factors = await self._calculate_pricing_factors(
+                customer_data,
+                policy_type,
+                coverage_amount,
+                risk_assessment,
+                market_data,
+            )
+
+            # Apply pricing strategy
+            final_premium, adjusted_factors = await self._apply_pricing_strategy(
+                base_premium,
+                pricing_factors,
+                pricing_strategy,
+                market_data,
+            )
+
+            # Calculate discounts and surcharges
+            discount_total = sum(
+                factor.value for factor in adjusted_factors if factor.value < 0
+            )
+            surcharge_total = sum(
+                factor.value
+                for factor in adjusted_factors
+                if factor.value > 0
+                and factor.factor_type != PricingFactorType.BASE_RATE
+            )
+
+            # Generate quote
+            quote = PricingQuote(
+                quote_id=self._generate_quote_id(),
+                customer_id=customer_data.get("customer_id", ""),
+                policy_type=policy_type,
+                coverage_amount=coverage_amount,
+                base_premium=base_premium,
+                final_premium=final_premium,
+                pricing_factors=adjusted_factors,
+                discount_total=abs(discount_total),
+                surcharge_total=surcharge_total,
+                risk_multiplier=risk_assessment.premium_multiplier,
+                market_competitiveness=await self._calculate_market_competitiveness(
+                    final_premium, market_data
+                ),
+                quote_timestamp=datetime.utcnow(),
+                valid_until=datetime.utcnow() + timedelta(days=30),
+                confidence_score=await self._calculate_pricing_confidence(
+                    pricing_factors, market_data, risk_assessment
+                ),
+                quantum_signature="",
+            )
+
+            # Add quantum signature
+            quote_data = json.dumps(
+                {
+                    "quote_id": quote.quote_id,
+                    "final_premium": str(quote.final_premium),
+                    "timestamp": quote.quote_timestamp.isoformat(),
+                }
+            )
+            quote.quantum_signature = await self.quantum_signer.sign(
+                quote_data
+            )
+
+            logger.info(
+                f"Quote calculated: {final_premium} (base: {base_premium})"
+            )
+            return quote
+
+        except Exception as e:
+            logger.error(f"Quote calculation failed: {str(e)}")
+            raise
+
+    async def _calculate_base_premium(
+        self,
+        policy_type: str,
+        coverage_amount: Decimal,
+        customer_data: Dict[str, Any],
+    ) -> Decimal:
+        \"\"\"Calculate base premium before adjustments.\"\"\"
+        try:
+            base_rate = self.base_rates.get(policy_type, Decimal("1000.00"))
+
+            # Coverage amount factor
+            coverage_factor = (
+                float(coverage_amount) / 100000
+            )  # Normalize to 100k
+            coverage_adjustment = Decimal(str(np.sqrt(coverage_factor)))
+
+            # Age factor for certain policy types
+            age_factor = Decimal("1.0")
+            if policy_type in ["auto", "life", "health"]:
+                age = customer_data.get("age", 35)
+                age_factor = self._calculate_age_factor(age, policy_type)
+
+            base_premium = base_rate * coverage_adjustment * age_factor
+            return base_premium.quantize(Decimal("0.01"))
+
+        except Exception as e:
+            logger.error(f"Base premium calculation failed: {str(e)}")
+            return Decimal("1000.00")
+
+    async def _calculate_pricing_factors(
+        self,
+        customer_data: Dict[str, Any],
+        policy_type: str,
+        coverage_amount: Decimal,
+        risk_assessment: RiskAssessment,
+        market_data: MarketData,
+    ) -> List[PricingFactor]:
+        \"\"\"Calculate all pricing factors.\"\"\"
+        factors = []
+
+        try:
+            # Risk adjustment factor
+            risk_factor = PricingFactor(
+                factor_type=PricingFactorType.RISK_ADJUSTMENT,
+                value=Decimal(
+                    str((risk_assessment.premium_multiplier - 1.0) * 100)
+                ),
+                weight=0.4,
+                description=f"Risk level: {risk_assessment.overall_risk_level.value}",
+                source="risk_assessment",
+            )
+            factors.append(risk_factor)
+
+            # Market competitive factor
+            market_factor = await self._calculate_market_factor(market_data)
+            factors.append(market_factor)
+
+            # Volume discount
+            volume_factor = await self._calculate_volume_discount(
+                customer_data
+            )
+            factors.append(volume_factor)
+
+            # Loyalty discount
+            loyalty_factor = await self._calculate_loyalty_discount(
+                customer_data
+            )
+            factors.append(loyalty_factor)
+
+            # Regulatory surcharge
+            regulatory_factor = await self._calculate_regulatory_surcharge(
+                policy_type
+            )
+            factors.append(regulatory_factor)
+
+            # Profit margin
+            profit_factor = await self._calculate_profit_margin(
+                policy_type, risk_assessment
+            )
+            factors.append(profit_factor)
+
+            return factors
+
+        except Exception as e:
+            logger.error(f"Pricing factors calculation failed: {str(e)}")
+            return []
+
+    async def _get_market_data(
+        self, policy_type: str, coverage_amount: Decimal
+    ) -> MarketData:
+        \"\"\"Get market pricing data (mock implementation).\"\"\"
+        try:
+            # In production, integrate with market data APIs
+            base_price = float(coverage_amount) * 0.012  # 1.2% of coverage
+
+            competitor_prices = [
+                Decimal(str(base_price * np.random.uniform(0.8, 1.2)))
+                for _ in range(5)
+            ]
+
+            market_average = sum(competitor_prices) / len(competitor_prices)
+            sorted_prices = sorted(competitor_prices)
+
+            return MarketData(
+                competitor_prices=competitor_prices,
+                market_average=market_average,
+                market_percentile_25=sorted_prices[1],
+                market_percentile_75=sorted_prices[3],
+                volume_trends={policy_type: np.random.uniform(0.95, 1.05)},
+                seasonal_factors=self._get_seasonal_factors(),
+            )
+
+        except Exception as e:
+            logger.error(f"Market data retrieval failed: {str(e)}")
+            return MarketData(
+                competitor_prices=[Decimal("1000.00")],
+                market_average=Decimal("1000.00"),
+                market_percentile_25=Decimal("900.00"),
+                market_percentile_75=Decimal("1100.00"),
+                volume_trends={},
+                seasonal_factors={},
+            )
+
+    async def _calculate_market_factor(
+        self, market_data: MarketData
+    ) -> PricingFactor:
+        \"\"\"Calculate market competitiveness factor.\"\"\"
+        # Aim for 25th percentile for competitive pricing
+        target_price = market_data.market_percentile_25
+        market_average = market_data.market_average
+
+        if market_average > 0:
+            adjustment_pct = (
+                (target_price - market_average) / market_average
+            ) * 100
+        else:
+            adjustment_pct = 0
+
+        return PricingFactor(
+            factor_type=PricingFactorType.MARKET_COMPETITIVE,
+            value=Decimal(str(adjustment_pct)),
+            weight=0.3,
+            description=f"Market competitive adjustment: {adjustment_pct:.1f}%",
+            source="market_data",
+        )
+
+    async def _calculate_volume_discount(
+        self, customer_data: Dict[str, Any]
+    ) -> PricingFactor:
+        \"\"\"Calculate volume-based discount.\"\"\"
+        existing_policies = customer_data.get("existing_policies", [])
+        policy_count = len(existing_policies)
+
+        if policy_count >= 3:
+            discount_pct = -10.0  # 10% discount
+        elif policy_count >= 2:
+            discount_pct = -5.0  # 5% discount
+        else:
+            discount_pct = 0.0
+
+        return PricingFactor(
+            factor_type=PricingFactorType.VOLUME_DISCOUNT,
+            value=Decimal(str(discount_pct)),
+            weight=0.1,
+            description=f"Multi-policy discount: {abs(discount_pct):.1f}%",
+            source="customer_data",
+        )
+
+    async def _calculate_loyalty_discount(
+        self, customer_data: Dict[str, Any]
+    ) -> PricingFactor:
+        \"\"\"Calculate loyalty-based discount.\"\"\"
+        customer_since = customer_data.get("customer_since")
+        if customer_since:
+            years_with_company = (
+                datetime.utcnow() - datetime.fromisoformat(customer_since)
+            ).days / 365
+            if years_with_company >= 5:
+                discount_pct = -7.5  # 7.5% loyalty discount
+            elif years_with_company >= 2:
+                discount_pct = -3.0  # 3% loyalty discount
+            else:
+                discount_pct = 0.0
+        else:
+            discount_pct = 0.0
+
+        return PricingFactor(
+            factor_type=PricingFactorType.LOYALTY_DISCOUNT,
+            value=Decimal(str(discount_pct)),
+            weight=0.1,
+            description=f"Loyalty discount: {abs(discount_pct):.1f}%",
+            source="customer_data",
+        )
+
+    async def _calculate_regulatory_surcharge(
+        self, policy_type: str
+    ) -> PricingFactor:
+        \"\"\"Calculate regulatory surcharge.\"\"\"
+        # Regulatory fees by policy type
+        regulatory_fees = {
+            "auto": 2.5,
+            "home": 1.5,
+            "health": 3.0,
+            "life": 1.0,
+            "business": 4.0,
+        }
+
+        surcharge_pct = regulatory_fees.get(policy_type, 2.0)
+
+        return PricingFactor(
+            factor_type=PricingFactorType.REGULATORY_SURCHARGE,
+            value=Decimal(str(surcharge_pct)),
+            weight=0.05,
+            description=f"Regulatory fee: {surcharge_pct}%",
+            source="regulatory_requirements",
+        )
+
+    async def _calculate_profit_margin(
+        self, policy_type: str, risk_assessment: RiskAssessment
+    ) -> PricingFactor:
+        \"\"\"Calculate profit margin factor.\"\"\"
+        # Base profit margins by policy type
+        base_margins = {
+            "auto": 15.0,
+            "home": 20.0,
+            "health": 10.0,
+            "life": 25.0,
+            "business": 18.0,
+        }
+
+        base_margin = base_margins.get(policy_type, 15.0)
+
+        # Adjust margin based on risk
+        if risk_assessment.overall_risk_level == RiskLevel.VERY_HIGH:
+            margin = base_margin + 5.0
+        elif risk_assessment.overall_risk_level == RiskLevel.HIGH:
+            margin = base_margin + 2.0
+        elif risk_assessment.overall_risk_level == RiskLevel.LOW:
+            margin = base_margin - 2.0
+        elif risk_assessment.overall_risk_level == RiskLevel.VERY_LOW:
+            margin = base_margin - 3.0
+        else:
+            margin = base_margin
+
+        return PricingFactor(
+            factor_type=PricingFactorType.PROFIT_MARGIN,
+            value=Decimal(str(margin)),
+            weight=0.2,
+            description=f"Profit margin: {margin}%",
+            source="business_requirements",
+        )
+
+    async def _apply_pricing_strategy(
+        self,
+        base_premium: Decimal,
+        factors: List[PricingFactor],
+        strategy: PricingStrategy,
+        market_data: MarketData,
+    ) -> Tuple[Decimal, List[PricingFactor]]:
+        \"\"\"Apply pricing strategy to calculate final premium.\"\"\"
+        try:
+            adjusted_factors = factors.copy()
+
+            # Apply strategy-specific adjustments
+            if strategy == PricingStrategy.COMPETITIVE:
+                # Aim for market 25th percentile
+                competitive_adj = PricingFactor(
+                    factor_type=PricingFactorType.MARKET_COMPETITIVE,
+                    # Additional 5% discount
+                    value=Decimal("-5.0"),
+                    weight=0.1,
+                    description="Competitive strategy adjustment",
+                    source="pricing_strategy",
+                )
+                adjusted_factors.append(competitive_adj)
+
+            elif strategy == PricingStrategy.PENETRATION:
+                # Aggressive pricing for market entry
+                penetration_adj = PricingFactor(
+                    factor_type=PricingFactorType.MARKET_COMPETITIVE,
+                    # 15% discount
+                    value=Decimal("-15.0"),
+                    weight=0.2,
+                    description="Market penetration pricing",
+                    source="pricing_strategy",
+                )
+                adjusted_factors.append(penetration_adj)
+
+            elif strategy == PricingStrategy.PREMIUM:
+                # Premium pricing for superior service
+                premium_adj = PricingFactor(
+                    factor_type=PricingFactorType.PROFIT_MARGIN,
+                    value=Decimal("10.0"),  # 10% premium
+                    weight=0.1,
+                    description="Premium strategy adjustment",
+                    source="pricing_strategy",
+                )
+                adjusted_factors.append(premium_adj)
+
+            # Calculate final premium
+            total_adjustment = Decimal("0")
+            for factor in adjusted_factors:
+                weighted_adjustment = factor.value * Decimal(
+                    str(factor.weight)
+                )
+                total_adjustment += weighted_adjustment
+
+            # Apply percentage adjustments
+            adjustment_multiplier = Decimal("1") + (
+                total_adjustment /
+                Decimal("100")
+            )
+            final_premium = base_premium * adjustment_multiplier
+
+            return final_premium.quantize(Decimal("0.01")), adjusted_factors
+
+        except Exception as e:
+            logger.error(f"Pricing strategy application failed: {str(e)}")
+            return base_premium, factors
+
+    async def _calculate_market_competitiveness(
+        self, final_premium: Decimal, market_data: MarketData
+    ) -> float:
+        \"\"\"Calculate how competitive the price is vs market.\"\"\"
+        try:
+            if market_data.market_average > 0:
+                competitiveness = float(
+                    market_data.market_average - final_premium
+                ) / float(market_data.market_average)
+                # Normalize to 0-1
+                return max(0.0, min(1.0, competitiveness + 0.5))
+            return 0.5
+        except Exception:
+            return 0.5
+
+    async def _calculate_pricing_confidence(
+        self,
+        factors: List[PricingFactor],
+        market_data: MarketData,
+        risk_assessment: RiskAssessment,
+    ) -> float:
+        \"\"\"Calculate confidence in pricing accuracy.\"\"\"
+        try:
+            # Base confidence from risk assessment
+            base_confidence = risk_assessment.confidence_score
+
+            # Market data quality factor
+            market_confidence = (
+                0.8 if len(
+                    market_data.competitor_prices) >= 3 else 0.6
+            )
+
+            # Pricing model confidence (simplified)
+            model_confidence = 0.85
+
+            # Combined confidence
+            overall_confidence = (
+                base_confidence * 0.4
+                + market_confidence * 0.3
+                + model_confidence * 0.3
+            )
+
+            return min(0.95, max(0.5, overall_confidence))
+
+        except Exception as e:
+            logger.error(f"Confidence calculation failed: {str(e)}")
+            return 0.75
+
+    def _calculate_age_factor(self, age: int, policy_type: str) -> Decimal:
+        \"\"\"Calculate age-based pricing factor.\"\"\"
+        if policy_type == "auto":
+            if age < 25:
+                return Decimal("1.3")
+            elif age > 65:
+                return Decimal("1.1")
+            else:
+                return Decimal("1.0")
+        elif policy_type == "life":
+            # 1% per year after 30
+            return Decimal(str(1.0 + max(0, age - 30) * 0.01))
+        elif policy_type == "health":
+            # 1.5% per year after 25
+            return Decimal(str(1.0 + max(0, age - 25) * 0.015))
+        else:
+            return Decimal("1.0")
+
+    def _get_seasonal_factors(self) -> Dict[str, float]:
+        \"\"\"Get seasonal pricing factors.\"\"\"
+        current_month = datetime.utcnow().month
+
+        # Basic seasonal adjustments
+        seasonal_factors = {"auto": 1.0, "home": 1.0, "travel": 1.0}
+
+        # Summer travel insurance premium
+        if 6 <= current_month <= 8:
+            seasonal_factors["travel"] = 1.1
+
+        # Winter auto insurance (higher accident rates)
+        if current_month in [12, 1, 2]:
+            seasonal_factors["auto"] = 1.05
+
+        return seasonal_factors
+
+    def _generate_quote_id(self) -> str:
+        \"\"\"Generate unique quote identifier.\"\"\"
+        timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+        import hashlib
+
+        random_suffix = hashlib.md5(
+            str(datetime.utcnow().timestamp()).encode()
+        ).hexdigest()[:8]
+        return f"QTE_{timestamp}_{random_suffix.upper()}"
+
+    async def compare_with_competitors(
+        self, quote: PricingQuote, competitor_quotes: List[Decimal]
+    ) -> Dict[str, Any]:
+        \"\"\"Compare quote with competitor pricing.\"\"\"
+        try:
+            if not competitor_quotes:
+                return {"comparison": "no_competitor_data"}
+
+            our_price = quote.final_premium
+            avg_competitor_price = sum(competitor_quotes) / len(
+                competitor_quotes
+            )
+            min_competitor_price = min(competitor_quotes)
+            max_competitor_price = max(competitor_quotes)
+
+            # Calculate position
+            better_than_count = sum(
+                1 for price in competitor_quotes if our_price < price
+            )
+            position_percentile = better_than_count / len(competitor_quotes)
+
+            comparison = {
+                "our_price": str(our_price),
+                "market_average": str(avg_competitor_price),
+                "market_min": str(min_competitor_price),
+                "market_max": str(max_competitor_price),
+                "position_percentile": position_percentile,
+                "savings_vs_average": str(avg_competitor_price - our_price),
+                "is_most_competitive": our_price
+                == min(competitor_quotes + [our_price]),
+                "competitiveness_rating": self._get_competitiveness_rating(
+                    position_percentile
+                ),
+            }
+
+            return comparison
+
+        except Exception as e:
+            logger.error(f"Competitor comparison failed: {str(e)}")
+            return {"comparison": "comparison_failed"}
+
+    def _get_competitiveness_rating(self, percentile: float) -> str:
+        \"\"\"Get competitiveness rating based on market position.\"\"\"
+        if percentile >= 0.8:
+            return "highly_competitive"
+        elif percentile >= 0.6:
+            return "competitive"
+        elif percentile >= 0.4:
+            return "average"
+        elif percentile >= 0.2:
+            return "above_average"
+        else:
+            return "premium_pricing"
+"""
+
+# Properly fixed content for fraud_detection_agent.py
+fraud_detection_agent_content = """\"\"\"
+Fraud Detection Agent for MatchedCover.
+
+This agent specializes in detecting fraudulent activities across
+policies, claims, and customer interactions using advanced ML models
+and pattern recognition.\"\"\"
+
+import asyncio
+import logging
+import json
+from typing import Dict, List, Optional, Any
+from datetime import datetime, timezone
+from dataclasses import dataclass
+
+from src.agents.base_agent import BaseAgent
+from src.quantum.crypto import QuantumResistantSigner
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class FraudIndicator:
+    \"\"\"Represents a fraud indicator with severity and description.\"\"\"
+
+    indicator_type: str
+    severity: float  # 0.0 to 1.0
+    description: str
+    evidence: Dict[str, Any]
+    confidence: float  # 0.0 to 1.0
+
+
+@dataclass
+class FraudAnalysisResult:
+    \"\"\"Result of fraud analysis.\"\"\"
+
+    fraud_score: float  # 0.0 to 1.0
+    risk_level: str  # "LOW", "MEDIUM", "HIGH", "CRITICAL"
+    indicators: List[FraudIndicator]
+    recommended_actions: List[str]
+    requires_investigation: bool
+    blocked_transaction: bool
+
+
+class FraudDetectionAgent(BaseAgent):
+    \"\"\"
+    AI Agent specialized in fraud detection and prevention.
+
+    Capabilities:
+    - Real-time fraud scoring
+    - Pattern recognition
+    - Anomaly detection
+    - Historical analysis
+    - Behavioral profiling
+    - Network analysis
+    \"\"\"
+
+    def __init__(self):
+        super().__init__()
+        self.agent_type = "fraud_detection"
+        self.name = "FraudDetectionAgent"
+
+        # Fraud detection models (simulated)
+        self.fraud_models = {}
+
+        # Risk thresholds
+        self.risk_thresholds = {
+            "LOW": 0.3,
+            "MEDIUM": 0.6,
+            "HIGH": 0.8,
+            "CRITICAL": 0.95,
+        }
+
+        # Fraud patterns database (simulated)
+        self.known_patterns = {}
+
+        # Behavioral profiles cache
+        self.behavioral_profiles = {}
+
+        # Quantum signer for result integrity
+        self.quantum_signer = QuantumResistantSigner()
+
+    async def _load_default_config(self) -> Dict[str, Any]:
+        \"\"\"Load default configuration for the fraud detection agent.\"\"\"
+        return {
+            "fraud_score_threshold": 0.7,
+            "enable_behavioral_analysis": True,
+            "enable_pattern_matching": True,
+            "max_processing_time": 30.0,
+            "confidence_threshold": 0.8,
+        }
+
+    async def _initialize_resources(self) -> None:
+        \"\"\"Initialize agent-specific resources.\"\"\"
+        # Load fraud detection models
+        await self._load_models()
+
+        # Initialize behavioral analysis
+        await self._initialize_behavioral_analysis()
+
+        # Load historical fraud data
+        await self._load_historical_data()
+
+    async def _cleanup_resources(self) -> None:
+        \"\"\"Cleanup agent-specific resources.\"\"\"
+        # Clear caches
+        self.behavioral_profiles.clear()
+        self.known_patterns.clear()
+
+    async def _process_task_impl(
+        self,
+        task_type: str,
+        input_data: Dict[str, Any],
+        context: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        \"\"\"
+        Process fraud detection task.
+
+        Args:
+            task_type: Type of fraud analysis to perform
+            input_data: Data to analyze for fraud
+            context: Additional context information
+
+        Returns:
+            Dict containing fraud analysis result
+        \"\"\"
+        logger.info(f"Processing fraud detection task: {task_type}")
+
+        entity_data = input_data.get("entity_data", input_data)
+        analysis_context = context or {}
+
+        # Perform fraud analysis based on type
+        if task_type == "claim_fraud":
+            result = await self._analyze_claim_fraud(
+                entity_data, analysis_context
+            )
+        elif task_type == "application_fraud":
+            result = await self._analyze_application_fraud(
+                entity_data, analysis_context
+            )
+        elif task_type == "identity_fraud":
+            result = await self._analyze_identity_fraud(
+                entity_data, analysis_context
+            )
+        elif task_type == "premium_fraud":
+            result = await self._analyze_premium_fraud(
+                entity_data, analysis_context
+            )
+        elif task_type == "behavioral_analysis":
+            result = await self._analyze_behavioral_patterns(
+                entity_data, analysis_context
+            )
+        else:
+            result = await self._general_fraud_analysis(
+                entity_data, analysis_context
+            )
+
+        # Generate quantum signature for result integrity
+        result_dict = {
+            "fraud_score": result.fraud_score,
+            "risk_level": result.risk_level,
+            "indicators": [
+                indicator.__dict__ for indicator in result.indicators
+            ],
+            "recommended_actions": result.recommended_actions,
+            "requires_investigation": result.requires_investigation,
+            "blocked_transaction": result.blocked_transaction,
+        }
+
+        signature = await self.quantum_signer.sign(
+            json.dumps(result_dict, default=str)
+        )
+
+        return {
+            "fraud_analysis": result_dict,
+            "quantum_signature": signature,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "agent_version": "1.0.0",
+            "task_type": task_type,
+        }
+
+    async def _validate_input(
+        self, task_type: str, input_data: Dict[str, Any]
+    ) -> None:
+        \"\"\"Validate input data for fraud detection tasks.\"\"\"
+        if not input_data:
+            raise ValueError("Input data cannot be empty")
+
+        # Task-specific validation
+        if task_type == "claim_fraud":
+            required_fields = ["claim_amount", "claim_date"]
+            for field in required_fields:
+                if field not in input_data and field not in input_data.get(
+                    "entity_data", {}
+                ):
+                    logger.warning(
+                        f"Required field '{field}' missing for claim fraud analysis"
+                    )
+
+        elif task_type == "application_fraud":
+            if (
+                "personal_info" not in input_data
+                and "personal_info" not in input_data.get("entity_data", {})
+            ):
+                logger.warning(
+                    "Personal info missing for application fraud analysis"
+                )
+
+    async def _analyze_claim_fraud(
+        self, claim_data: Dict[str, Any], context: Dict[str, Any]
+    ) -> FraudAnalysisResult:
+        \"\"\"Analyze potential fraud in insurance claims.\"\"\"
+        indicators = []
+        fraud_score = 0.0
+
+        # Temporal analysis
+        claim_date = claim_data.get("claim_date")
+        policy_start = context.get("policy_start_date")
+        if claim_date and policy_start:
+            try:
+                claim_dt = datetime.fromisoformat(
+                    claim_date.replace("Z", "+00:00")
+                )
+                policy_dt = datetime.fromisoformat(
+                    policy_start.replace("Z", "+00:00")
+                )
+                days_since_policy = (claim_dt - policy_dt).days
+
+                if days_since_policy < 30:
+                    indicators.append(
+                        FraudIndicator(
+                            indicator_type="temporal_anomaly",
+                            severity=0.7,
+                            description="Claim filed very soon after policy inception",
+                            evidence={"days_since_policy": days_since_policy},
+                            confidence=0.8,
+                        )
+                    )
+                    fraud_score += 0.3
+            except ValueError:
+                logger.warning("Invalid date format in claim or policy data")
+
+        # Amount analysis
+        claim_amount = claim_data.get("claim_amount", 0)
+        policy_limit = context.get("policy_limit", 0)
+        if (
+            isinstance(claim_amount, (int, float))
+            and isinstance(policy_limit, (int, float))
+            and policy_limit > 0
+        ):
+            if claim_amount > policy_limit * 0.8:
+                indicators.append(
+                    FraudIndicator(
+                        indicator_type="amount_anomaly",
+                        severity=0.6,
+                        description="Claim amount near policy limit",
+                        evidence={
+                            "claim_amount": claim_amount,
+                            "policy_limit": policy_limit,
+                        },
+                        confidence=0.7,
+                    )
+                )
+                fraud_score += 0.25
+
+        # Historical pattern analysis
+        customer_id = context.get("customer_id")
+        if customer_id:
+            historical_claims = await self._get_customer_claim_history(
+                customer_id
+            )
+            if len(historical_claims) > 3:
+                indicators.append(
+                    FraudIndicator(
+                        indicator_type="pattern_anomaly",
+                        severity=0.5,
+                        description="Multiple claims history",
+                        evidence={"claim_count": len(historical_claims)},
+                        confidence=0.6,
+                    )
+                )
+                fraud_score += 0.2
+
+        # Documentation analysis
+        documents = claim_data.get("documents", [])
+        if len(documents) < 2:
+            indicators.append(
+                FraudIndicator(
+                    indicator_type="documentation_insufficient",
+                    severity=0.4,
+                    description="Insufficient supporting documentation",
+                    evidence={"document_count": len(documents)},
+                    confidence=0.7,
+                )
+            )
+            fraud_score += 0.15
+
+        return self._generate_fraud_result(
+            fraud_score, indicators, "claim_fraud"
+        )
+
+    async def _analyze_application_fraud(
+        self, application_data: Dict[str, Any], context: Dict[str, Any]
+    ) -> FraudAnalysisResult:
+        \"\"\"Analyze potential fraud in policy applications.\"\"\"
+        indicators = []
+        fraud_score = 0.0
+
+        # Identity verification
+        provided_info = application_data.get("personal_info", {})
+
+        # Address verification
+        address = provided_info.get("address", "")
+        if not address or len(address.split()) < 3:
+            indicators.append(
+                FraudIndicator(
+                    indicator_type="identity_verification",
+                    severity=0.6,
+                    description="Incomplete or suspicious address information",
+                    evidence={"address": address},
+                    confidence=0.8,
+                )
+            )
+            fraud_score += 0.25
+
+        # Income verification
+        stated_income = provided_info.get("annual_income", 0)
+        age = provided_info.get("age", 0)
+        if isinstance(stated_income, (int, float)) and isinstance(
+            age, (int, float)
+        ):
+            if stated_income > 200000 and age < 25:
+                indicators.append(
+                    FraudIndicator(
+                        indicator_type="income_anomaly",
+                        severity=0.5,
+                        description="Unusually high income for age",
+                        evidence={"income": stated_income, "age": age},
+                        confidence=0.6,
+                    )
+                )
+                fraud_score += 0.2
+
+        # Application velocity
+        completion_speed = application_data.get("completion_time_minutes", 0)
+        if (
+            isinstance(completion_speed, (int, float))
+            and completion_speed < 5
+            and completion_speed > 0
+        ):
+            indicators.append(
+                FraudIndicator(
+                    indicator_type="velocity_anomaly",
+                    severity=0.4,
+                    description="Application completed unusually quickly",
+                    evidence={"completion_time": completion_speed},
+                    confidence=0.7,
+                )
+            )
+            fraud_score += 0.15
+
+        return self._generate_fraud_result(
+            fraud_score, indicators, "application_fraud"
+        )
+
+    async def _analyze_identity_fraud(
+        self, identity_data: Dict[str, Any], context: Dict[str, Any]
+    ) -> FraudAnalysisResult:
+        \"\"\"Analyze potential identity fraud.\"\"\"
+        indicators = []
+        fraud_score = 0.0
+
+        # Document verification simulation
+        provided_documents = identity_data.get("documents", [])
+
+        for doc in provided_documents:
+            if isinstance(doc, dict):
+                doc_type = doc.get("type", "unknown")
+                doc_quality = doc.get("quality_score", 1.0)
+
+                if isinstance(doc_quality, (int, float)) and doc_quality < 0.7:
+                    indicators.append(
+                        FraudIndicator(
+                            indicator_type="document_quality",
+                            severity=0.7,
+                            description=f"Poor quality {doc_type} document",
+                            evidence={
+                                "document_type": doc_type,
+                                "quality_score": doc_quality,
+                            },
+                            confidence=0.8,
+                        )
+                    )
+                    fraud_score += 0.3
+
+        # Biometric analysis simulation
+        biometric_match = identity_data.get("biometric_match_score", 1.0)
+        if isinstance(biometric_match, (int, float)) and biometric_match < 0.8:
+            indicators.append(
+                FraudIndicator(
+                    indicator_type="biometric_mismatch",
+                    severity=0.9,
+                    description="Biometric verification failed",
+                    evidence={"match_score": biometric_match},
+                    confidence=0.95,
+                )
+            )
+            fraud_score += 0.5
+
+        return self._generate_fraud_result(
+            fraud_score, indicators, "identity_fraud"
+        )
+
+    async def _analyze_premium_fraud(
+        self, payment_data: Dict[str, Any], context: Dict[str, Any]
+    ) -> FraudAnalysisResult:
+        \"\"\"Analyze potential premium fraud.\"\"\"
+        indicators = []
+        fraud_score = 0.0
+
+        # Payment pattern analysis
+        payment_history = payment_data.get("payment_history", [])
+
+        # Check for unusual payment patterns
+        if len(payment_history) > 0:
+            amounts = []
+            for payment in payment_history:
+                if isinstance(payment, dict):
+                    amount = payment.get("amount", 0)
+                    if isinstance(amount, (int, float)):
+                        amounts.append(amount)
+
+            if len(amounts) > 5 and len(set(amounts)) == 1:
+                indicators.append(
+                    FraudIndicator(
+                        indicator_type="payment_pattern",
+                        severity=0.5,
+                        description="Suspiciously consistent payment amounts",
+                        evidence={"payment_count": len(amounts)},
+                        confidence=0.6,
+                    )
+                )
+                fraud_score += 0.2
+
+        # Payment method analysis
+        payment_method = payment_data.get("payment_method", "")
+        if payment_method == "cryptocurrency":
+            indicators.append(
+                FraudIndicator(
+                    indicator_type="payment_method",
+                    severity=0.4,
+                    description=(
+                        "Cryptocurrency payment may indicate "
+                        "anonymity seeking"
+                    ),
+                    evidence={"payment_method": payment_method},
+                    confidence=0.5,
+                )
+            )
+            fraud_score += 0.15
+
+        return self._generate_fraud_result(
+            fraud_score, indicators, "premium_fraud"
+        )
+
+    async def _analyze_behavioral_patterns(
+        self, user_data: Dict[str, Any], context: Dict[str, Any]
+    ) -> FraudAnalysisResult:
+        \"\"\"Analyze behavioral patterns for fraud indicators.\"\"\"
+        indicators = []
+        fraud_score = 0.0
+
+        user_id = user_data.get("user_id")
+        if not user_id:
+            return self._generate_fraud_result(0.0, [], "behavioral_analysis")
+
+        # Login pattern analysis
+        login_patterns = user_data.get("login_patterns", {})
+        unusual_hours = login_patterns.get("unusual_hours", 0)
+        if isinstance(unusual_hours, (int, float)) and unusual_hours > 50:
+            indicators.append(
+                FraudIndicator(
+                    indicator_type="behavioral_anomaly",
+                    severity=0.3,
+                    description="Unusual login time patterns",
+                    evidence={"unusual_hours_percentage": unusual_hours},
+                    confidence=0.5,
+                )
+            )
+            fraud_score += 0.1
+
+        # Device analysis
+        devices_used = user_data.get("devices_used", [])
+        if len(devices_used) > 5:
+            indicators.append(
+                FraudIndicator(
+                    indicator_type="device_anomaly",
+                    severity=0.4,
+                    description="Multiple devices used",
+                    evidence={"device_count": len(devices_used)},
+                    confidence=0.6,
+                )
+            )
+            fraud_score += 0.15
+
+        # Geographic analysis
+        locations = user_data.get("login_locations", [])
+        unique_countries = set()
+        for loc in locations:
+            if isinstance(loc, dict) and loc.get("country"):
+                unique_countries.add(loc["country"])
+
+        if len(unique_countries) > 3:
+            indicators.append(
+                FraudIndicator(
+                    indicator_type="geographic_anomaly",
+                    severity=0.6,
+                    description="Logins from multiple countries",
+                    evidence={"country_count": len(unique_countries)},
+                    confidence=0.7,
+                )
+            )
+            fraud_score += 0.25
+
+        return self._generate_fraud_result(
+            fraud_score, indicators, "behavioral_analysis"
+        )
+
+    async def _general_fraud_analysis(
+        self, entity_data: Dict[str, Any], context: Dict[str, Any]
+    ) -> FraudAnalysisResult:
+        \"\"\"Perform general fraud analysis.\"\"\"
+        indicators = []
+        total_score = 0.0
+
+        # Basic data integrity checks
+        required_fields = context.get("required_fields", [])
+        missing_fields = []
+        for field in required_fields:
+            if not entity_data.get(field):
+                missing_fields.append(field)
+
+        if missing_fields:
+            indicators.append(
+                FraudIndicator(
+                    indicator_type="data_integrity",
+                    severity=0.3,
+                    description="Missing required information",
+                    evidence={"missing_fields": missing_fields},
+                    confidence=0.8,
+                )
+            )
+            total_score += 0.1
+
+        return self._generate_fraud_result(total_score, indicators, "general")
+
+    def _generate_fraud_result(
+        self,
+        fraud_score: float,
+        indicators: List[FraudIndicator],
+        analysis_type: str,
+    ) -> FraudAnalysisResult:
+        \"\"\"Generate fraud analysis result with risk level and recommendations.\"\"\"
+        # Ensure fraud_score is within bounds
+        fraud_score = max(0.0, min(fraud_score, 1.0))
+
+        # Determine risk level
+        risk_level = "LOW"
+        for level, threshold in self.risk_thresholds.items():
+            if fraud_score >= threshold:
+                risk_level = level
+
+        # Generate recommendations
+        recommendations = []
+        if fraud_score >= self.risk_thresholds["CRITICAL"]:
+            recommendations.extend(
+                [
+                    "IMMEDIATE BLOCK - Refer to fraud investigation team",
+                    "Escalate to senior management",
+                    "Preserve all evidence and documentation",
+                ]
+            )
+        elif fraud_score >= self.risk_thresholds["HIGH"]:
+            recommendations.extend(
+                [
+                    "Manual review required before approval",
+                    "Additional documentation verification needed",
+                    "Flag for enhanced monitoring",
+                ]
+            )
+        elif fraud_score >= self.risk_thresholds["MEDIUM"]:
+            recommendations.extend(
+                [
+                    "Enhanced due diligence required",
+                    "Additional verification steps recommended",
+                ]
+            )
+        else:
+            recommendations.append("Standard processing approved")
+
+        return FraudAnalysisResult(
+            fraud_score=fraud_score,
+            risk_level=risk_level,
+            indicators=indicators,
+            recommended_actions=recommendations,
+            requires_investigation=fraud_score >= self.risk_thresholds["HIGH"],
+            blocked_transaction=fraud_score
+            >= self.risk_thresholds["CRITICAL"],
+        )
+
+    async def _load_models(self) -> None:
+        \"\"\"Load fraud detection models.\"\"\"
+        logger.info("Loading fraud detection models...")
+        self.fraud_models = {
+            "claim_fraud": {
+                "model_type": "claim_fraud",
+                "version": "1.0",
+                "accuracy": 0.92,
+            },
+            "application_fraud": {
+                "model_type": "application_fraud",
+                "version": "1.0",
+                "accuracy": 0.89,
+            },
+            "identity_fraud": {
+                "model_type": "identity_fraud",
+                "version": "1.0",
+                "accuracy": 0.95,
+            },
+            "premium_fraud": {
+                "model_type": "premium_fraud",
+                "version": "1.0",
+                "accuracy": 0.87,
+            },
+        }
+        await asyncio.sleep(0.1)  # Simulate loading time
+
+    async def _initialize_behavioral_analysis(self) -> None:
+        \"\"\"Initialize behavioral analysis components.\"\"\"
+        logger.info("Initializing behavioral analysis...")
+        await asyncio.sleep(0.1)
+
+    async def _load_historical_data(self) -> None:
+        \"\"\"Load historical fraud data for pattern recognition.\"\"\"
+        logger.info("Loading historical fraud data...")
+        self.known_patterns = {
+            "claim_patterns": [
+                "early_claim_after_policy",
+                "multiple_small_claims",
+                "maximum_benefit_claims",
+            ],
+            "application_patterns": [
+                "rapid_application_completion",
+                "inconsistent_information",
+                "high_risk_demographics",
+            ],
+        }
+        await asyncio.sleep(0.1)
+
+    async def _get_customer_claim_history(
+        self, customer_id: str
+    ) -> List[Dict[str, Any]]:
+        \"\"\"Get customer's claim history.\"\"\"
+        # Simulate database query
+        await asyncio.sleep(0.05)
+        return [
+            {"claim_id": f"claim_{i}", "amount": 1000 * i} for i in range(3)
+        ]
+
+    def get_capabilities(self) -> List[str]:
+        \"\"\"Get list of fraud detection capabilities.\"\"\"
+        return [
+            "claim_fraud_detection",
+            "application_fraud_detection",
+            "identity_verification",
+            "premium_fraud_detection",
+            "behavioral_analysis",
+            "pattern_recognition",
+            "anomaly_detection",
+            "real_time_scoring",
+        ]
+"""
+
+# Write the fixed files
+with open(pricing_agent_path, "w") as f:
+    f.write(pricing_agent_content)
+
+with open(fraud_detection_agent_path, "w") as f:
+    f.write(fraud_detection_agent_content)
+
+print("Files successfully updated with fixed versions!")

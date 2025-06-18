@@ -1,0 +1,684 @@
+""""
+Fraud Detection Agent for MatchedCover.
+
+This agent specializes in detecting fraudulent activities across
+policies, claims, and customer interactions using advanced ML models
+and pattern recognition.
+""""
+
+import asyncio
+import logging
+import json
+from typing import Dict, List, Optional, Any
+from datetime import datetime, timezone
+from dataclasses import dataclass
+
+from src.agents.base_agent import BaseAgent
+from src.quantum.crypto import QuantumResistantSigner
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class FraudIndicator:
+    """Represents a fraud indicator with severity and description."""
+
+    indicator_type: str
+severity: float  # 0.0 to 1.0
+description: str
+evidence: Dict[str, Any]
+confidence: float  # 0.0 to 1.0
+
+
+@dataclass
+class FraudAnalysisResult:
+    """Result of fraud analysis."""
+
+    fraud_score: float  # 0.0 to 1.0
+risk_level: str  # "LOW", "MEDIUM", "HIGH", "CRITICAL"
+indicators: List[FraudIndicator]
+recommended_actions: List[str]
+requires_investigation: bool
+blocked_transaction: bool
+
+
+class FraudDetectionAgent(BaseAgent):
+    """"
+AI Agent specialized in fraud detection and prevention.
+
+    Capabilities:
+    - Real-time fraud scoring
+- Pattern recognition
+- Anomaly detection
+- Historical analysis
+- Behavioral profiling
+- Network analysis
+""""
+
+    def __init__(self):
+        super().__init__(
+        agent_type="fraud_detection", name="FraudDetectionAgent"
+    )
+
+        # Fraud detection models (simulated)
+    self.fraud_models = {}
+
+        # Risk thresholds
+    self.risk_thresholds = {
+        "LOW": 0.3,
+        "MEDIUM": 0.6,
+        "HIGH": 0.8,
+        "CRITICAL": 0.95,
+    }
+
+        # Fraud patterns database (simulated)
+    self.known_patterns = {}
+
+        # Behavioral profiles cache
+    self.behavioral_profiles = {}
+
+        # Quantum signer for result integrity
+    self.quantum_signer = QuantumResistantSigner()
+
+    async def _load_default_config(self) -> Dict[str, Any]:
+        """Load default configuration for the fraud detection agent."""
+    return {
+        "fraud_score_threshold": 0.7,
+        "enable_behavioral_analysis": True,
+        "enable_pattern_matching": True,
+        "max_processing_time": 30.0,
+        "confidence_threshold": 0.8,
+    }
+
+    async def _initialize_resources(self) -> None:
+        """Initialize agent-specific resources."""
+    # Load fraud detection models
+    await self._load_models()
+
+        # Initialize behavioral analysis
+    await self._initialize_behavioral_analysis()
+
+        # Load historical fraud data
+    await self._load_historical_data()
+
+    async def _cleanup_resources(self) -> None:
+        """Cleanup agent-specific resources."""
+    # Clear caches
+    self.behavioral_profiles.clear()
+    self.known_patterns.clear()
+
+    async def _process_task_impl(
+        self,
+    task_type: str,
+    input_data: Dict[str, Any],
+    context: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+        """"
+    Process fraud detection task.
+
+        Args:
+            task_type: Type of fraud analysis to perform
+        input_data: Data to analyze for fraud
+        context: Additional context information
+
+        Returns:
+            Dict containing fraud analysis result
+    """"
+    logger.info(f"Processing fraud detection task: {task_type}")
+
+        entity_data = input_data.get("entity_data", input_data)
+    analysis_context = context or {}
+
+        # Perform fraud analysis based on type
+    if task_type == "claim_fraud":
+            result = await self._analyze_claim_fraud(
+            entity_data, analysis_context
+        )
+    elif task_type == "application_fraud":
+            result = await self._analyze_application_fraud(
+            entity_data, analysis_context
+        )
+    elif task_type == "identity_fraud":
+            result = await self._analyze_identity_fraud(
+            entity_data, analysis_context
+        )
+    elif task_type == "premium_fraud":
+            result = await self._analyze_premium_fraud(
+            entity_data, analysis_context
+        )
+    elif task_type == "behavioral_analysis":
+            result = await self._analyze_behavioral_patterns(
+            entity_data, analysis_context
+        )
+    else:
+            result = await self._general_fraud_analysis(
+            entity_data, analysis_context
+        )
+
+        # Generate quantum signature for result integrity
+    result_dict = {
+        "fraud_score": result.fraud_score,
+        "risk_level": result.risk_level,
+        "indicators": [
+            indicator.__dict__ for indicator in result.indicators
+        ],
+        "recommended_actions": result.recommended_actions,
+        "requires_investigation": result.requires_investigation,
+        "blocked_transaction": result.blocked_transaction,
+    }
+
+        signature = await self.quantum_signer.sign(
+        json.dumps(result_dict, default=str)
+    )
+
+        return {
+        "fraud_analysis": result_dict,
+        "quantum_signature": signature,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "agent_version": "1.0.0",
+        "task_type": task_type,
+    }
+
+    async def _validate_input(
+        self, task_type: str, input_data: Dict[str, Any]
+) -> None:
+        """Validate input data for fraud detection tasks."""
+    if not input_data:
+            raise ValueError("Input data cannot be empty")
+
+        # Task-specific validation
+    if task_type == "claim_fraud":
+            required_fields = ["claim_amount", "claim_date"]
+        for field in required_fields:
+                if field not in input_data and field not in input_data.get(
+                    "entity_data", {}
+            ):
+                    logger.warning(
+                    f"Required field '{field}' missing for claim fraud"
+                        analysis""
+                )
+
+        elif task_type == "application_fraud":
+            if (
+                "personal_info" not in input_data
+            and "personal_info" not in input_data.get("entity_data", {})
+        ):
+                logger.warning(
+                "Personal info missing for application fraud analysis"
+            )
+
+    async def _analyze_claim_fraud(
+        self, claim_data: Dict[str, Any], context: Dict[str, Any]
+) -> FraudAnalysisResult:
+        """Analyze potential fraud in insurance claims."""
+    indicators = []
+    fraud_score = 0.0
+
+        # Temporal analysis
+    claim_date = claim_data.get("claim_date")
+    policy_start = context.get("policy_start_date")
+    if claim_date and policy_start:
+            try:
+                claim_dt = datetime.fromisoformat(
+                claim_date.replace("Z", "+00:00")
+            )
+            policy_dt = datetime.fromisoformat(
+                policy_start.replace("Z", "+00:00")
+            )
+            days_since_policy = (claim_dt - policy_dt).days
+
+                if days_since_policy < 30:
+                    indicators.append(
+                    FraudIndicator(
+                        indicator_type="temporal_anomaly",
+                        severity=0.7,
+                        description="Claim filed very soon after policy"
+                            inception","
+                        evidence={"days_since_policy": days_since_policy},
+                        confidence=0.8,
+                    )
+                )
+                fraud_score += 0.3
+        except ValueError:
+                logger.warning("Invalid date format in claim or policy data")
+
+        # Amount analysis
+    claim_amount = claim_data.get("claim_amount", 0)
+    policy_limit = context.get("policy_limit", 0)
+    if (
+            isinstance(claim_amount, (int, float))
+        and isinstance(policy_limit, (int, float))
+        and policy_limit > 0
+    ):
+            if claim_amount > policy_limit * 0.8:
+                indicators.append(
+                FraudIndicator(
+                    indicator_type="amount_anomaly",
+                    severity=0.6,
+                    description="Claim amount near policy limit",
+                    evidence={
+                        "claim_amount": claim_amount,
+                        "policy_limit": policy_limit,
+                    },
+                    confidence=0.7,
+                )
+            )
+            fraud_score += 0.25
+
+        # Historical pattern analysis
+    customer_id = context.get("customer_id")
+    if customer_id:
+            historical_claims = await self._get_customer_claim_history(
+            customer_id
+        )
+        if len(historical_claims) > 3:
+                indicators.append(
+                FraudIndicator(
+                    indicator_type="pattern_anomaly",
+                    severity=0.5,
+                    description="Multiple claims history",
+                    evidence={"claim_count": len(historical_claims)},
+                    confidence=0.6,
+                )
+            )
+            fraud_score += 0.2
+
+        # Documentation analysis
+    documents = claim_data.get("documents", [])
+    if len(documents) < 2:
+            indicators.append(
+            FraudIndicator(
+                indicator_type="documentation_insufficient",
+                severity=0.4,
+                description="Insufficient supporting documentation",
+                evidence={"document_count": len(documents)},
+                confidence=0.7,
+            )
+        )
+        fraud_score += 0.15
+
+        return self._generate_fraud_result(
+        fraud_score, indicators, "claim_fraud"
+    )
+
+    async def _analyze_application_fraud(
+        self, application_data: Dict[str, Any], context: Dict[str, Any]
+) -> FraudAnalysisResult:
+        """Analyze potential fraud in policy applications."""
+    indicators = []
+    fraud_score = 0.0
+
+        # Identity verification
+    provided_info = application_data.get("personal_info", {})
+
+        # Address verification
+    address = provided_info.get("address", "")
+    if not address or len(address.split()) < 3:
+            indicators.append(
+            FraudIndicator(
+                indicator_type="identity_verification",
+                severity=0.6,
+                description="Incomplete or suspicious address information",
+                evidence={"address": address},
+                confidence=0.8,
+            )
+        )
+        fraud_score += 0.25
+
+        # Income verification
+    stated_income = provided_info.get("annual_income", 0)
+    age = provided_info.get("age", 0)
+    if isinstance(stated_income, (int, float)) and isinstance(
+            age, (int, float)
+    ):
+            if stated_income > 200000 and age < 25:
+                indicators.append(
+                FraudIndicator(
+                    indicator_type="income_anomaly",
+                    severity=0.5,
+                    description="Unusually high income for age",
+                    evidence={"income": stated_income, "age": age},
+                    confidence=0.6,
+                )
+            )
+            fraud_score += 0.2
+
+        # Application velocity
+    completion_speed = application_data.get("completion_time_minutes", 0)
+    if (
+            isinstance(completion_speed, (int, float))
+        and completion_speed < 5
+        and completion_speed > 0
+    ):
+            indicators.append(
+            FraudIndicator(
+                indicator_type="velocity_anomaly",
+                severity=0.4,
+                description="Application completed unusually quickly",
+                evidence={"completion_time": completion_speed},
+                confidence=0.7,
+            )
+        )
+        fraud_score += 0.15
+
+        return self._generate_fraud_result(
+        fraud_score, indicators, "application_fraud"
+    )
+
+    async def _analyze_identity_fraud(
+        self, identity_data: Dict[str, Any], context: Dict[str, Any]
+) -> FraudAnalysisResult:
+        """Analyze potential identity fraud."""
+    indicators = []
+    fraud_score = 0.0
+
+        # Document verification simulation
+    provided_documents = identity_data.get("documents", [])
+
+        for doc in provided_documents:
+            if isinstance(doc, dict):
+                doc_type = doc.get("type", "unknown")
+            doc_quality = doc.get("quality_score", 1.0)
+
+                if isinstance(doc_quality, (int, float)) and doc_quality < 0.7:
+                    indicators.append(
+                    FraudIndicator(
+                        indicator_type="document_quality",
+                        severity=0.7,
+                        description=f"Poor quality {doc_type} document",
+                        evidence={
+                            "document_type": doc_type,
+                            "quality_score": doc_quality,
+                        },
+                        confidence=0.8,
+                    )
+                )
+                fraud_score += 0.3
+
+        # Biometric analysis simulation
+    biometric_match = identity_data.get("biometric_match_score", 1.0)
+    if isinstance(biometric_match, (int, float)) and biometric_match < 0.8:
+            indicators.append(
+            FraudIndicator(
+                indicator_type="biometric_mismatch",
+                severity=0.9,
+                description="Biometric verification failed",
+                evidence={"match_score": biometric_match},
+                confidence=0.95,
+            )
+        )
+        fraud_score += 0.5
+
+        return self._generate_fraud_result(
+        fraud_score, indicators, "identity_fraud"
+    )
+
+    async def _analyze_premium_fraud(
+        self, payment_data: Dict[str, Any], context: Dict[str, Any]
+) -> FraudAnalysisResult:
+        """Analyze potential premium fraud."""
+    indicators = []
+    fraud_score = 0.0
+
+        # Payment pattern analysis
+    payment_history = payment_data.get("payment_history", [])
+
+        # Check for unusual payment patterns
+    if len(payment_history) > 0:
+            amounts = []
+        for payment in payment_history:
+                if isinstance(payment, dict):
+                    amount = payment.get("amount", 0)
+                if isinstance(amount, (int, float)):
+                        amounts.append(amount)
+
+            if len(amounts) > 5 and len(set(amounts)) == 1:
+                indicators.append(
+                FraudIndicator(
+                    indicator_type="payment_pattern",
+                    severity=0.5,
+                    description="Suspiciously consistent payment amounts",
+                    evidence={"payment_count": len(amounts)},
+                    confidence=0.6,
+                )
+            )
+            fraud_score += 0.2
+
+        # Payment method analysis
+    payment_method = payment_data.get("payment_method", "")
+    if payment_method == "cryptocurrency":
+            indicators.append(
+            FraudIndicator(
+                indicator_type="payment_method",
+                severity=0.4,
+                description=(
+                    "Cryptocurrency payment may indicate "
+                    "anonymity seeking",
+                )
+                evidence={"payment_method": payment_method},
+                confidence=0.5,
+            )
+        )
+        fraud_score += 0.15
+
+        return self._generate_fraud_result(
+        fraud_score, indicators, "premium_fraud"
+    )
+
+    async def _analyze_behavioral_patterns(
+        self, user_data: Dict[str, Any], context: Dict[str, Any]
+) -> FraudAnalysisResult:
+        """Analyze behavioral patterns for fraud indicators."""
+    indicators = []
+    fraud_score = 0.0
+
+        user_id = user_data.get("user_id")
+    if not user_id:
+            return self._generate_fraud_result(0.0, [], "behavioral_analysis")
+
+        # Login pattern analysis
+    login_patterns = user_data.get("login_patterns", {})
+    unusual_hours = login_patterns.get("unusual_hours", 0)
+    if isinstance(unusual_hours, (int, float)) and unusual_hours > 50:
+            indicators.append(
+            FraudIndicator(
+                indicator_type="behavioral_anomaly",
+                severity=0.3,
+                description="Unusual login time patterns",
+                evidence={"unusual_hours_percentage": unusual_hours},
+                confidence=0.5,
+            )
+        )
+        fraud_score += 0.1
+
+        # Device analysis
+    devices_used = user_data.get("devices_used", [])
+    if len(devices_used) > 5:
+            indicators.append(
+            FraudIndicator(
+                indicator_type="device_anomaly",
+                severity=0.4,
+                description="Multiple devices used",
+                evidence={"device_count": len(devices_used)},
+                confidence=0.6,
+            )
+        )
+        fraud_score += 0.15
+
+        # Geographic analysis
+    locations = user_data.get("login_locations", [])
+    unique_countries = set()
+    for loc in locations:
+            if isinstance(loc, dict) and loc.get("country"):
+                unique_countries.add(loc["country"])
+
+        if len(unique_countries) > 3:
+            indicators.append(
+            FraudIndicator(
+                indicator_type="geographic_anomaly",
+                severity=0.6,
+                description="Logins from multiple countries",
+                evidence={"country_count": len(unique_countries)},
+                confidence=0.7,
+            )
+        )
+        fraud_score += 0.25
+
+        return self._generate_fraud_result(
+        fraud_score, indicators, "behavioral_analysis"
+    )
+
+    async def _general_fraud_analysis(
+        self, entity_data: Dict[str, Any], context: Dict[str, Any]
+) -> FraudAnalysisResult:
+        """Perform general fraud analysis."""
+    indicators = []
+    total_score = 0.0
+
+        # Basic data integrity checks
+    required_fields = context.get("required_fields", [])
+    missing_fields = []
+    for field in required_fields:
+            if not entity_data.get(field):
+                missing_fields.append(field)
+
+        if missing_fields:
+            indicators.append(
+            FraudIndicator(
+                indicator_type="data_integrity",
+                severity=0.3,
+                description="Missing required information",
+                evidence={"missing_fields": missing_fields},
+                confidence=0.8,
+            )
+        )
+        total_score += 0.1
+
+        return self._generate_fraud_result(total_score, indicators, "general")
+
+    def _generate_fraud_result(
+        self,
+    fraud_score: float,
+    indicators: List[FraudIndicator],
+    analysis_type: str,
+) -> FraudAnalysisResult:
+        """Generate fraud analysis result with risk level and "
+        recommendations.""""
+    # Ensure fraud_score is within bounds
+    fraud_score = max(0.0, min(fraud_score, 1.0))
+
+        # Determine risk level
+    risk_level = "LOW"
+    for level, threshold in self.risk_thresholds.items():
+            if fraud_score >= threshold:
+                risk_level = level
+
+        # Generate recommendations
+    recommendations = []
+    if fraud_score >= self.risk_thresholds["CRITICAL"]:
+            recommendations.extend(
+            [
+                "IMMEDIATE BLOCK - Refer to fraud investigation team",
+                "Escalate to senior management",
+                "Preserve all evidence and documentation",
+            ]
+        )
+    elif fraud_score >= self.risk_thresholds["HIGH"]:
+            recommendations.extend(
+            [
+                "Manual review required before approval",
+                "Additional documentation verification needed",
+                "Flag for enhanced monitoring",
+            ]
+        )
+    elif fraud_score >= self.risk_thresholds["MEDIUM"]:
+            recommendations.extend(
+            [
+                "Enhanced due diligence required",
+                "Additional verification steps recommended",
+            ]
+        )
+    else:
+            recommendations.append("Standard processing approved")
+
+        return FraudAnalysisResult(
+        fraud_score=fraud_score,
+        risk_level=risk_level,
+        indicators=indicators,
+        recommended_actions=recommendations,
+        requires_investigation=fraud_score >= self.risk_thresholds["HIGH"],
+        blocked_transaction=fraud_score
+        >= self.risk_thresholds["CRITICAL"],
+    )
+
+    async def _load_models(self) -> None:
+        """Load fraud detection models."""
+    logger.info("Loading fraud detection models...")
+    self.fraud_models = {
+        "claim_fraud": {
+            "model_type": "claim_fraud",
+            "version": "1.0",
+            "accuracy": 0.92,
+        },
+        "application_fraud": {
+            "model_type": "application_fraud",
+            "version": "1.0",
+            "accuracy": 0.89,
+        },
+        "identity_fraud": {
+            "model_type": "identity_fraud",
+            "version": "1.0",
+            "accuracy": 0.95,
+        },
+        "premium_fraud": {
+            "model_type": "premium_fraud",
+            "version": "1.0",
+            "accuracy": 0.87,
+        },
+    }
+    await asyncio.sleep(0.1)  # Simulate loading time
+
+    async def _initialize_behavioral_analysis(self) -> None:
+        """Initialize behavioral analysis components."""
+    logger.info("Initializing behavioral analysis...")
+    await asyncio.sleep(0.1)
+
+    async def _load_historical_data(self) -> None:
+        """Load historical fraud data for pattern recognition."""
+    logger.info("Loading historical fraud data...")
+    self.known_patterns = {
+        "claim_patterns": [
+            "early_claim_after_policy",
+            "multiple_small_claims",
+            "maximum_benefit_claims",
+        ],
+        "application_patterns": [
+            "rapid_application_completion",
+            "inconsistent_information",
+            "high_risk_demographics",
+        ],
+    }
+    await asyncio.sleep(0.1)
+
+    async def _get_customer_claim_history(
+        self, customer_id: str
+) -> List[Dict[str, Any]]:
+        """Get customer's claim history."""
+    # Simulate database query
+    await asyncio.sleep(0.05)
+    return [
+        {"claim_id": f"claim_{i}", "amount": 1000 * i} for i in range(3)
+    ]
+
+    def get_capabilities(self) -> List[str]:
+        """Get list of fraud detection capabilities."""
+    return [
+        "claim_fraud_detection",
+        "application_fraud_detection",
+        "identity_verification",
+        "premium_fraud_detection",
+        "behavioral_analysis",
+        "pattern_recognition",
+        "anomaly_detection",
+        "real_time_scoring",
+    ]
